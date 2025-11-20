@@ -12,8 +12,10 @@ trait Troop {
   var stats: Stats
   var radius: Float
   var color: Color
-  var target: Option[EnemyTroop] = None
+  var target: Option[Troop] = None
   var weapon: Weapon
+
+  def isEnemy: Boolean
 
   def update(delta: Float): Unit = {
     if (!stats.isDead) {
@@ -26,7 +28,7 @@ trait Troop {
 
   protected def updateTarget(): Unit = {
     if (target.isEmpty || target.exists(_.stats.isDead)) {
-      target = GameState.enemies
+      target = findTargets
         .filter(!_.stats.isDead)
         .minByOption(enemy => position.dst(enemy.position))
     }
@@ -37,13 +39,20 @@ trait Troop {
       case Some(enemy) =>
         val distance = position.dst(enemy.position)
         if (distance > stats.attackRange) {
-          val direction = new Vector2(
+          val toTarget = new Vector2(
             enemy.position.x - position.x,
             enemy.position.y - position.y
-          ).nor()
+          )
 
-          position.x += direction.x * stats.movementSpeed * delta
-          position.y += direction.y * stats.movementSpeed * delta
+          val desiredDirection = if (toTarget.isZero) new Vector2(0, 0) else new Vector2(toTarget).nor()
+          val avoidance = obstacleAvoidance()
+          val moveDirection = desiredDirection.add(avoidance)
+
+          if (!moveDirection.isZero) {
+            moveDirection.nor().scl(stats.movementSpeed * delta)
+            position.x += moveDirection.x
+            position.y += moveDirection.y
+          }
         }
       case None => // No target behavior
     }
@@ -54,6 +63,24 @@ trait Troop {
       val distance = position.dst(enemy.position)
       if (distance <= stats.attackRange && !enemy.stats.isDead) {
         weapon.attack(position, enemy.position, enemy)
+      }
+    }
+  }
+
+  protected def findTargets: List[Troop]
+
+  private def obstacleAvoidance(): Vector2 = {
+    GameState.buildings.foldLeft(new Vector2(0, 0)) { (acc, building) =>
+      val closestPoint = building.closestPoint(position)
+      val away = new Vector2(position).sub(closestPoint)
+      val distance = away.len()
+      val desiredSeparation = radius + 6f
+
+      if (distance > 0 && distance < desiredSeparation) {
+        val strength = (desiredSeparation - distance) / desiredSeparation
+        acc.add(away.nor().scl(strength))
+      } else {
+        acc
       }
     }
   }
