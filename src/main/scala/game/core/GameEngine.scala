@@ -10,6 +10,7 @@ import com.badlogic.gdx.Input.Keys
 import game.entities.buildings._
 import game.entities.troops._
 import game.systems.Projectile
+import scala.collection.mutable
 
 object GameState {
   var buildings: List[Building] = List()
@@ -18,8 +19,17 @@ object GameState {
   var hq: Option[HQTroop] = None
   private var projectiles: List[Projectile] = List()
   val buildingBuffer: Float = 12f
+  val gridCellSize: Float = 32f
+  val worldMinX: Float = -960f
+  val worldMinY: Float = -960f
+  val worldMaxX: Float = 2240f
+  val worldMaxY: Float = 2240f
+  val gridWidth: Int = math.ceil((worldMaxX - worldMinX) / gridCellSize).toInt
+  val gridHeight: Int = math.ceil((worldMaxY - worldMinY) / gridCellSize).toInt
+  private var navigationGrid: Array[Array[Boolean]] = Array.ofDim(gridWidth, gridHeight)
   var debugCollisionBounds: Boolean = false
   var debugTroopVectors: Boolean = false
+  var debugNavigationGrid: Boolean = false
 
   sealed trait Phase
   case object StartMenu extends Phase
@@ -56,6 +66,153 @@ object GameState {
     roundActive = false
     resultMessage = None
     phase = StartMenu
+
+    rebuildNavigationGrid()
+  }
+
+  private def clamp(value: Int, min: Int, max: Int): Int = math.max(min, math.min(max, value))
+
+  private def inBounds(gx: Int, gy: Int): Boolean =
+    gx >= 0 && gy >= 0 && gx < gridWidth && gy < gridHeight
+
+  def worldToGrid(x: Float, y: Float): (Int, Int) = {
+    val gx = math.floor((x - worldMinX) / gridCellSize).toInt
+    val gy = math.floor((y - worldMinY) / gridCellSize).toInt
+    (clamp(gx, 0, gridWidth - 1), clamp(gy, 0, gridHeight - 1))
+  }
+
+  def worldToGrid(pos: Vector2): (Int, Int) = worldToGrid(pos.x, pos.y)
+
+  def gridToWorldCenter(gx: Int, gy: Int): Vector2 =
+    new Vector2(
+      (worldMinX + gx * gridCellSize + gridCellSize * 0.5f),
+      (worldMinY + gy * gridCellSize + gridCellSize * 0.5f)
+    )
+
+  def resolveCollisions(pos: Vector2, radius: Float): Vector2 =
+    buildings.foldLeft(pos) { (p, building) =>
+      building.resolveCollision(p, radius, building.bufferMargin(buildingBuffer))
+    }
+
+  def rebuildNavigationGrid(): Unit = {
+    navigationGrid = Array.fill(gridWidth, gridHeight)(true)
+
+    buildings.foreach { building =>
+      val margin = building.gridBlockMargin(gridCellSize, buildingBuffer)
+      val minX = building.position.x - margin
+      val minY = building.position.y - margin
+      val maxX = building.position.x + building.width + margin
+      val maxY = building.position.y + building.height + margin
+
+      val (startX, startY) = worldToGrid(minX, minY)
+      val (endX, endY) = worldToGrid(maxX, maxY)
+
+      for {
+        gx <- startX to endX
+        gy <- startY to endY
+        if inBounds(gx, gy)
+      } navigationGrid(gx)(gy) = false
+    }
+  }
+
+  private def isWalkable(cell: (Int, Int)): Boolean =
+    inBounds(cell._1, cell._2) && navigationGrid(cell._1)(cell._2)
+
+  private def findNearestWalkable(cell: (Int, Int)): Option[(Int, Int)] = {
+    if (isWalkable(cell)) return Some(cell)
+
+    val (cx, cy) = cell
+    val maxRadius = math.max(gridWidth, gridHeight)
+
+    (1 until maxRadius).view
+      .flatMap { radius =>
+        val coords = for {
+          gx <- (cx - radius) to (cx + radius)
+          gy <- (cy - radius) to (cy + radius)
+          if math.abs(gx - cx) == radius || math.abs(gy - cy) == radius
+        } yield (gx, gy)
+
+        coords.find(isWalkable)
+      }
+      .headOption
+  }
+
+  def findPath(startWorld: Vector2, goalWorld: Vector2): List[Vector2] = {
+    val startCell = worldToGrid(startWorld)
+    val goalCell = worldToGrid(goalWorld)
+    val maybeStart = findNearestWalkable(startCell)
+    val maybeGoal = findNearestWalkable(goalCell)
+
+    if (maybeStart.isEmpty || maybeGoal.isEmpty) return List()
+
+    val start = maybeStart.get
+    val goal = maybeGoal.get
+
+    val fScore = mutable.Map[(Int, Int), Float]().withDefaultValue(Float.MaxValue)
+    val open = mutable.PriorityQueue[(Int, Int)]()(Ordering.by[(Int, Int), Float](cell => -fScore(cell)))
+    val cameFrom = mutable.Map[(Int, Int), (Int, Int)]()
+    val gScore = mutable.Map[(Int, Int), Float]().withDefaultValue(Float.MaxValue)
+
+    def heuristic(a: (Int, Int), b: (Int, Int)): Float = {
+      val dx = math.abs(a._1 - b._1)
+      val dy = math.abs(a._2 - b._2)
+      (dx + dy + (math.sqrt(2) - 2) * math.min(dx, dy)).toFloat
+    }
+
+    gScore(start) = 0f
+    fScore(start) = heuristic(start, goal)
+    open.enqueue(start)
+
+    val closed = mutable.Set[(Int, Int)]()
+
+    def neighbors(cell: (Int, Int)): Seq[((Int, Int), Float)] = {
+      val (x, y) = cell
+      for {
+        dx <- -1 to 1
+        dy <- -1 to 1
+        if !(dx == 0 && dy == 0)
+        nx = x + dx
+        ny = y + dy
+        neighbor = (nx, ny)
+        if isWalkable(neighbor)
+      } yield neighbor -> (if (dx != 0 && dy != 0) math.sqrt(2).toFloat else 1f)
+    }
+
+    while (open.nonEmpty) {
+      val current = open.dequeue()
+      if (closed.contains(current)) {
+        // Skip stale entries
+      } else {
+        if (current == goal) {
+          def reconstructPath(node: (Int, Int), acc: List[(Int, Int)]): List[(Int, Int)] = {
+            cameFrom.get(node) match {
+              case Some(parent) => reconstructPath(parent, node :: acc)
+              case None         => node :: acc
+            }
+          }
+
+          val cells = reconstructPath(current, Nil)
+          return cells.map { case (gx, gy) => gridToWorldCenter(gx, gy) }
+        }
+
+        closed += current
+
+        neighbors(current).foreach {
+          case (neighbor, cost) =>
+            if (!closed.contains(neighbor)) {
+              val tentativeG = gScore(current) + cost
+              if (tentativeG < gScore(neighbor)) {
+                cameFrom(neighbor) = current
+                gScore(neighbor) = tentativeG
+                fScore(neighbor) = tentativeG + heuristic(neighbor, goal)
+                open.enqueue(neighbor)
+              }
+            }
+        }
+      }
+    }
+
+    List()
   }
 
   def update(delta: Float): Unit = {
@@ -101,15 +258,39 @@ object GameState {
   }
 
   def renderDebug(shapeRenderer: ShapeRenderer): Unit = {
+    if (debugNavigationGrid) {
+      renderNavigationGrid(shapeRenderer)
+    }
+
     if (debugCollisionBounds) {
       shapeRenderer.setColor(0f, 1f, 1f, 0.6f)
-      buildings.foreach(_.renderCollisionBounds(shapeRenderer, buildingBuffer))
+      buildings.foreach { building =>
+        building.renderCollisionBounds(shapeRenderer, building.bufferMargin(buildingBuffer))
+      }
     }
 
     if (debugTroopVectors) {
       playerTroops.foreach(_.renderDebugVectors(shapeRenderer))
       enemies.foreach(_.renderDebugVectors(shapeRenderer))
       hq.foreach(_.renderDebugVectors(shapeRenderer))
+    }
+  }
+
+  private def renderNavigationGrid(shapeRenderer: ShapeRenderer): Unit = {
+    for {
+      gx <- 0 until gridWidth
+      gy <- 0 until gridHeight
+    } {
+      val cellX = worldMinX + gx * gridCellSize
+      val cellY = worldMinY + gy * gridCellSize
+
+      if (navigationGrid(gx)(gy)) {
+        shapeRenderer.setColor(0.1f, 0.6f, 1f, 0.15f)
+      } else {
+        shapeRenderer.setColor(1f, 0.2f, 0.2f, 0.5f)
+      }
+
+      shapeRenderer.rect(cellX, cellY, gridCellSize, gridCellSize)
     }
   }
 
@@ -231,7 +412,7 @@ class GameEngine extends Game {
     GameState.render(shapeRenderer)
     shapeRenderer.end()
 
-    if (GameState.debugCollisionBounds || GameState.debugTroopVectors) {
+    if (GameState.debugCollisionBounds || GameState.debugTroopVectors || GameState.debugNavigationGrid) {
       shapeRenderer.begin(ShapeType.Line)
       shapeRenderer.setProjectionMatrix(camera.combined)
       GameState.renderDebug(shapeRenderer)
@@ -254,6 +435,10 @@ class GameEngine extends Game {
 
     if (Gdx.input.isKeyJustPressed(Keys.F2)) {
       GameState.debugTroopVectors = !GameState.debugTroopVectors
+    }
+
+    if (Gdx.input.isKeyJustPressed(Keys.F3)) {
+      GameState.debugNavigationGrid = !GameState.debugNavigationGrid
     }
 
     GameState.phase match {

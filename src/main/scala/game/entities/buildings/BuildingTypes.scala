@@ -8,6 +8,7 @@ class HQ extends Building {
   var width: Float = 60f
   var height: Float = 60f
   var color: Color = Color.WHITE
+  override val isHQ: Boolean = true
 
   override def applyEffect(): Unit = {
     // Will add HP boost to nearby troops

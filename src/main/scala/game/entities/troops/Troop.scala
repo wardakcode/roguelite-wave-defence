@@ -16,6 +16,10 @@ trait Troop {
   var weapon: Weapon
   var lastMoveDirection: Vector2 = new Vector2(0, 0)
   var lastAvoidance: Vector2 = new Vector2(0, 0)
+  var path: List[Vector2] = List()
+  var pathIndex: Int = 0
+  private var lastTargetSample: Vector2 = new Vector2(0, 0)
+  private var lastTargetRef: Option[Troop] = None
 
   def isEnemy: Boolean
 
@@ -33,6 +37,11 @@ trait Troop {
       target = findTargets
         .filter(!_.stats.isDead)
         .minByOption(enemy => position.dst(enemy.position))
+      if (target != lastTargetRef) {
+        path = List()
+        pathIndex = 0
+        lastTargetRef = target
+      }
     }
   }
 
@@ -41,30 +50,36 @@ trait Troop {
       case Some(enemy) =>
         val distance = position.dst(enemy.position)
         if (distance > stats.attackRange) {
-          val toTarget = new Vector2(
-            enemy.position.x - position.x,
-            enemy.position.y - position.y
-          )
+          val shouldRepath = path.isEmpty || pathIndex >= path.length ||
+            lastTargetSample.dst2(enemy.position) > (GameState.gridCellSize * GameState.gridCellSize) * 0.25f
 
-          val desiredDirection = if (toTarget.isZero) new Vector2(0, 0) else new Vector2(toTarget).nor()
-          val avoidance = obstacleAvoidance()
-          val moveDirection = desiredDirection.add(avoidance)
+          if (shouldRepath) {
+            path = GameState.findPath(position, enemy.position)
+            pathIndex = 0
+            lastTargetSample.set(enemy.position)
+          }
 
-          lastAvoidance.set(avoidance)
-          lastMoveDirection.set(moveDirection)
+          if (path.nonEmpty && pathIndex < path.length) {
+            val waypoint = path(pathIndex)
+            val toWaypoint = new Vector2(waypoint).sub(position)
 
-          if (!moveDirection.isZero) {
-            moveDirection.nor().scl(stats.movementSpeed * delta)
+            if (toWaypoint.len() < math.max(4f, radius / 2f)) {
+              pathIndex += 1
+            } else {
+              lastAvoidance.set(0f, 0f)
+              lastMoveDirection.set(toWaypoint)
 
-            val desiredPosition = new Vector2(position).add(moveDirection)
-            val correctedPosition = GameState.buildings.foldLeft(desiredPosition) { (pos, building) =>
-              building.resolveCollision(pos, radius, GameState.buildingBuffer)
+              val moveVector = new Vector2(toWaypoint).nor().scl(stats.movementSpeed * delta)
+              val desiredPosition = new Vector2(position).add(moveVector)
+              val correctedPosition = GameState.resolveCollisions(desiredPosition, radius)
+
+              position.set(correctedPosition)
             }
-
-            position.set(correctedPosition)
           }
         }
-      case None => // No target behavior
+      case None =>
+        path = List()
+        pathIndex = 0
     }
   }
 
@@ -78,22 +93,6 @@ trait Troop {
   }
 
   protected def findTargets: List[Troop]
-
-  private def obstacleAvoidance(): Vector2 = {
-    GameState.buildings.foldLeft(new Vector2(0, 0)) { (acc, building) =>
-      val closestPoint = building.closestPoint(position)
-      val away = new Vector2(position).sub(closestPoint)
-      val distance = away.len()
-      val desiredSeparation = radius + GameState.buildingBuffer
-
-      if (distance > 0 && distance < desiredSeparation) {
-        val strength = (desiredSeparation - distance) / desiredSeparation
-        acc.add(away.nor().scl(strength))
-      } else {
-        acc
-      }
-    }
-  }
 
   def render(shapeRenderer: ShapeRenderer): Unit = {
     if (!stats.isDead) {
@@ -140,5 +139,16 @@ trait Troop {
 
     shapeRenderer.setColor(Color.YELLOW)
     shapeRenderer.line(position.x, position.y, position.x + lastAvoidance.x * 30f, position.y + lastAvoidance.y * 30f)
+
+    if (path.nonEmpty) {
+      shapeRenderer.setColor(Color.MAGENTA)
+      val startPoint = new Vector2(position)
+      val pathPoints = startPoint :: path
+      pathPoints.sliding(2).foreach {
+        case List(from, to) =>
+          shapeRenderer.line(from.x, from.y, to.x, to.y)
+        case _ =>
+      }
+    }
   }
 }

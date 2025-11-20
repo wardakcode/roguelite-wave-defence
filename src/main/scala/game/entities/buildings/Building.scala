@@ -10,6 +10,8 @@ trait Building {
   var height: Float
   var color: Color
 
+  def isHQ: Boolean = false
+
   def render(shapeRenderer: ShapeRenderer): Unit = {
     shapeRenderer.setColor(color)
     shapeRenderer.rect(position.x, position.y, width, height)
@@ -31,6 +33,11 @@ trait Building {
     val maxY = position.y + height + margin
     (minX, minY, maxX, maxY)
   }
+
+  def bufferMargin(baseBuffer: Float): Float = if (isHQ) 0f else baseBuffer
+
+  def gridBlockMargin(cellSize: Float, baseBuffer: Float): Float =
+    if (isHQ) 0f else baseBuffer + cellSize
 
   def resolveCollision(point: Vector2, radius: Float, buffer: Float): Vector2 = {
     val margin = radius + buffer
