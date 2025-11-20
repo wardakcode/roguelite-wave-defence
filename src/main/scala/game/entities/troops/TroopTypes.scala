@@ -3,7 +3,7 @@ package game.entities.troops
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
-import game.systems.{MeleeWeapon, RangedWeapon, Stats, Weapon}
+import game.systems.{MeleeWeapon, PassiveWeapon, RangedWeapon, Stats, Weapon}
 import game.core.{GameEngine, GameState}
 
 class EnemyTroop(startPos: Vector2) extends Troop {
@@ -62,4 +62,19 @@ class NinjaTroop(startPos: Vector2) extends Troop {
 
   protected def findTargets: List[Troop] = GameState.enemies
 
+}
+
+class HQTroop extends Troop {
+  var position: Vector2 = new Vector2(130, 390)
+  var stats: Stats = Stats.forHQ
+  var radius: Float = 28f
+  var color: Color = Color.WHITE
+  var weapon: Weapon = new PassiveWeapon(this)
+  val isEnemy: Boolean = false
+
+  override protected def updateMovement(delta: Float): Unit = ()
+  override protected def updateTarget(): Unit = ()
+  override protected def updateCombat(delta: Float): Unit = ()
+
+  protected def findTargets: List[Troop] = GameState.enemies
 }

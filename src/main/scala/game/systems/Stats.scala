@@ -44,4 +44,14 @@ object Stats {
     projectileSize = Some(5f)
   )
   // Add more troop type factories as needed
+
+  def forHQ: Stats = Stats(
+    damage = 0f,
+    attackSpeed = 0f,
+    hp = 400f,
+    maxHp = 400f,
+    movementSpeed = 0f,
+    armor = 40f,
+    attackRange = 0f
+  )
 }

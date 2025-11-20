@@ -65,6 +65,12 @@ class RangedWeapon(var owner: Troop) extends Weapon {
   }
 }
 
+class PassiveWeapon(var owner: Troop) extends Weapon {
+  override def render(shapeRenderer: ShapeRenderer): Unit = {}
+
+  override def attack(source: Vector2, target: Vector2, enemy: Troop): Unit = {}
+}
+
 class Projectile(
                   var position: Vector2,
                   val direction: Vector2,
