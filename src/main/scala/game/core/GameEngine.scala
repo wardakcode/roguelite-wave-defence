@@ -11,6 +11,7 @@ import game.entities.troops._
 import game.systems.Projectile
 
 object GameState {
+  var buildings: List[Building] = List()
   var playerTroops: List[Troop] = List()
   var enemies: List[EnemyTroop] = List()
   private var projectiles: List[Projectile] = List()
@@ -32,6 +33,7 @@ object GameState {
   }
 
   def render(shapeRenderer: ShapeRenderer): Unit = {
+    buildings.foreach(_.render(shapeRenderer))
     playerTroops.foreach(_.render(shapeRenderer))
     enemies.foreach(_.render(shapeRenderer))
     projectiles.foreach(_.render(shapeRenderer))
@@ -43,13 +45,13 @@ object GameState {
 
   private def checkProjectileCollisions(): Unit = {
     projectiles.foreach { projectile =>
-      // Check collisions with enemies
-      enemies.find { enemy =>
-        !enemy.stats.isDead &&
-          enemy.position.dst(projectile.position) < enemy.radius + projectile.size
-      }.foreach { enemy =>
-        // Apply damage and deactivate projectile
-        enemy.stats = enemy.stats.takeDamage(projectile.damage)
+      val targets = if (projectile.isFromEnemy) playerTroops else enemies
+
+      targets.find { target =>
+        !target.stats.isDead &&
+          target.position.dst(projectile.position) < target.radius + projectile.size
+      }.foreach { target =>
+        target.stats = target.stats.takeDamage(projectile.damage)
         projectile.isActive = false
       }
     }
@@ -68,6 +70,13 @@ class GameEngine extends Game {
     camera.zoom = 2f  // Start more zoomed out
 
     shapeRenderer = new ShapeRenderer()
+
+    GameState.buildings = List(
+      new HQ(),
+      new Barracks(),
+      new Tavern(),
+      new Wall()
+    )
 
     // Initialize with some test troops
     GameState.enemies = List(

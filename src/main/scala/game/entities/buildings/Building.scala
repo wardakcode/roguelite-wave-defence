@@ -17,4 +17,10 @@ trait Building {
 
   // Method to apply building's effect to nearby troops
   def applyEffect(): Unit
+
+  def closestPoint(point: Vector2): Vector2 = {
+    val clampedX = math.max(position.x, math.min(point.x, position.x + width))
+    val clampedY = math.max(position.y, math.min(point.y, position.y + height))
+    new Vector2(clampedX.toFloat, clampedY.toFloat)
+  }
 }

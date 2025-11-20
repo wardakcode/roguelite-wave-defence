@@ -4,7 +4,7 @@ import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import game.core.GameState
-import game.entities.troops.{EnemyTroop, Troop}
+import game.entities.troops.Troop
 
 trait Weapon {
   var owner: Troop  // Reference to the troop that owns this weapon
@@ -16,7 +16,7 @@ trait Weapon {
 
   def render(shapeRenderer: ShapeRenderer): Unit
 
-  def attack(source: Vector2, target: Vector2, enemy: EnemyTroop): Unit
+  def attack(source: Vector2, target: Vector2, enemy: Troop): Unit
 
   def canAttack: Boolean = attackTimer <= 0
 }
@@ -26,7 +26,7 @@ class MeleeWeapon(var owner: Troop) extends Weapon {
     // Could render swing animation here
   }
 
-  def attack(source: Vector2, target: Vector2, enemy: EnemyTroop): Unit = {
+  def attack(source: Vector2, target: Vector2, enemy: Troop): Unit = {
     if (canAttack) {
       // Apply direct damage
       enemy.stats = enemy.stats.takeDamage(owner.stats.damage)
@@ -48,7 +48,7 @@ class RangedWeapon(var owner: Troop) extends Weapon {
     projectiles.foreach(_.render(shapeRenderer))
   }
 
-  def attack(source: Vector2, target: Vector2, enemy: EnemyTroop): Unit = {
+  def attack(source: Vector2, target: Vector2, enemy: Troop): Unit = {
     if (canAttack) {
       val direction = new Vector2(target).sub(source).nor()
       val newProjectile = new Projectile(
@@ -56,7 +56,8 @@ class RangedWeapon(var owner: Troop) extends Weapon {
         direction,
         owner.stats.projectileSpeed.getOrElse(300f),
         owner.stats.projectileSize.getOrElse(5f),
-        owner.stats.damage
+        owner.stats.damage,
+        isFromEnemy = owner.isEnemy
       )
       GameState.addProjectile(newProjectile)
       attackTimer = 1.0f / owner.stats.attackSpeed
@@ -70,7 +71,8 @@ class Projectile(
                   val speed: Float,
                   val size: Float,
                   val damage: Float,
-                  val maxDistance: Float = 1000f
+                  val maxDistance: Float = 1000f,
+                  val isFromEnemy: Boolean = false
                 ) {
   private val startPosition = new Vector2(position)
   var isActive: Boolean = true
