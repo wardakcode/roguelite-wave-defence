@@ -111,8 +111,8 @@ object GameState {
 
   def buyMeleeTroop(): Unit = {
     if (gold >= meleeCost) {
-      val troop = new MeleeTroop(new Vector2(140 + scala.util.Random.nextInt(40), 330 + scala.util.Random.nextInt(60)))
-      playerTroops = troop :: playerTroops
+      val troops = (1 to 5).map(_ => new MeleeTroop(new Vector2(140 + scala.util.Random.nextInt(40), 330 + scala.util.Random.nextInt(60)))).toList
+      playerTroops = troops ++ playerTroops
       gold -= meleeCost
     }
   }
@@ -130,7 +130,7 @@ object GameState {
   }
 
   private def spawnEnemiesForRound(): Unit = {
-    val count = 7 + (round - 1) * 2
+    val count = 12 + (round - 1) * 2
     val toughnessMultiplier = 1f + (round - 1) * 0.2f
     val spawnDistance = 800f + round * 30f
     val hqPosition = hq.map(_.position).getOrElse(new Vector2(0, 0))
@@ -139,10 +139,7 @@ object GameState {
       val side = i % 4
       val offset = scala.util.Random.nextFloat() * 300f - 150f
       val position = side match {
-        case 0 => new Vector2(hqPosition.x - spawnDistance, hqPosition.y + offset)
-        case 1 => new Vector2(hqPosition.x + spawnDistance, hqPosition.y + offset)
-        case 2 => new Vector2(hqPosition.x + offset, hqPosition.y - spawnDistance)
-        case _ => new Vector2(hqPosition.x + offset, hqPosition.y + spawnDistance)
+        case _ => new Vector2(hqPosition.x + spawnDistance, hqPosition.y - offset)
       }
       val enemy = new EnemyTroop(position)
       val boostedHp = enemy.stats.maxHp * toughnessMultiplier
