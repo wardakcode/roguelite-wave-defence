@@ -17,6 +17,10 @@ object GameState {
   var enemies: List[EnemyTroop] = List()
   var hq: Option[HQTroop] = None
   private var projectiles: List[Projectile] = List()
+  val worldMinX: Float = -960f
+  val worldMinY: Float = -960f
+  val worldMaxX: Float = 2240f
+  val worldMaxY: Float = 2240f
 
   sealed trait Phase
   case object StartMenu extends Phase
@@ -53,6 +57,31 @@ object GameState {
     roundActive = false
     resultMessage = None
     phase = StartMenu
+  }
+
+  def worldToGrid(shapeRenderer: ShapeRenderer) = {
+
+
+    // Vertical lines (constant X)
+    var x = Math.floor(worldMinX / 10f).toFloat * 10f
+    while (x <= worldMaxX) {
+      shapeRenderer.line(x, worldMinY, x, worldMaxY)
+      x += 10f
+    }
+
+    // Horizontal lines (constant Y)
+    var y = Math.floor(worldMinY / 10f).toFloat * 10f
+    while (y <= worldMaxY) {
+      shapeRenderer.line(worldMinX, y, worldMaxX, y)
+      y += 10f
+    }
+
+    // Highlight world axes
+    shapeRenderer.setColor(1, 0, 0, 1) // X-axis
+    shapeRenderer.line(worldMinX, 0, worldMaxX, 0)
+
+    shapeRenderer.setColor(0, 1, 0, 1) // Y-axis
+    shapeRenderer.line(0, worldMinY, 0, worldMaxY)
   }
 
   def update(delta: Float): Unit = {
@@ -230,12 +259,18 @@ class GameEngine extends Game {
     // Update game state
     GameState.update(delta)
 
-    // Render
+    // --- 1. Draw grid (lines only)
     shapeRenderer.setProjectionMatrix(camera.combined)
-    shapeRenderer.begin(ShapeType.Filled)
-    GameState.render(shapeRenderer)
+    shapeRenderer.begin(ShapeType.Line)
+    GameState.worldToGrid(shapeRenderer)
     shapeRenderer.end()
 
+    // --- 2. Draw game objects (filled)
+    shapeRenderer.begin(ShapeType.Filled)
+    GameState.render(shapeRenderer)   // just troops, buildings, etc.
+    shapeRenderer.end()
+
+    // ---- 3. Draw UI
     drawUI()
   }
 

@@ -4,9 +4,9 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.math.Vector2
 
 class HQ extends Building {
-  var position: Vector2 = new Vector2(100, 360)
-  var width: Float = 60f
-  var height: Float = 60f
+  var position: Vector2 = new Vector2(-100, 360)
+  var width: Float = 120f
+  var height: Float = 120f
   var color: Color = Color.WHITE
 
   override def applyEffect(): Unit = {
@@ -15,9 +15,9 @@ class HQ extends Building {
 }
 
 class Barracks extends Building {
-  var position: Vector2 = new Vector2(200, 200)
-  var width: Float = 40f
-  var height: Float = 40f
+  var position: Vector2 = new Vector2(190, 190)
+  var width: Float = 90f
+  var height: Float = 90f
   var color: Color = Color.LIGHT_GRAY
 
   override def applyEffect(): Unit = {
@@ -26,9 +26,9 @@ class Barracks extends Building {
 }
 
 class Tavern extends Building {
-  var position: Vector2 = new Vector2(300, 500)
-  var width: Float = 30f
-  var height: Float = 30f
+  var position: Vector2 = new Vector2(300, 690)
+  var width: Float = 60f
+  var height: Float = 60f
   var color: Color = Color.BROWN
 
   override def applyEffect(): Unit = {
@@ -37,9 +37,9 @@ class Tavern extends Building {
 }
 
 class Wall extends Building {
-  var position: Vector2 = new Vector2(400, 300)
-  var width: Float = 10f
-  var height: Float = 80f
+  var position: Vector2 = new Vector2(510, 150)
+  var width: Float = 30f
+  var height: Float = 480f
   var color: Color = Color.GRAY
 
   override def applyEffect(): Unit = {
