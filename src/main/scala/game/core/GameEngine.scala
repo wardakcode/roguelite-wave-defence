@@ -104,6 +104,7 @@ object GameState {
   def startRound(): Unit = {
     if (phase == GameOver) return
     round += 1
+    spawnCurrentTroops()
     spawnEnemiesForRound()
     roundActive = true
     phase = Playing
@@ -127,6 +128,29 @@ object GameState {
     )
     val guards = basePositions.map(pos => new MeleeTroop(pos))
     newHq :: guards
+  }
+
+  private def spawnCurrentTroops(): Unit = {
+    val baseX = 170
+    val baseY = 330
+    val colSpacing = 30
+    val rowSpacing = 30
+    val maxPerCol = 10
+
+    playerTroops.zipWithIndex.foreach { case (troop, i) =>
+      // Column and row index
+      val col = i / maxPerCol
+      val row = i % maxPerCol
+
+      // New position
+      val newPos = new Vector2(
+        baseX + col * colSpacing,
+        baseY + row * rowSpacing
+      )
+
+      troop.position = newPos
+      troop.resetHp()        // assuming you have this method
+    }
   }
 
   private def spawnEnemiesForRound(): Unit = {
