@@ -2,6 +2,6 @@
 <project version="4">
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
-    <profile name="sbt 1" modules="roguelite-wave-defence,roguelite-wave-defence.main,roguelite-wave-defence.test" />
+    <profile name="sbt 1" modules="rogue-civilisation,rogue-civilisation.main,rogue-civilisation.test,roguelite-wave-defence,roguelite-wave-defence.main,roguelite-wave-defence.test" />
   </component>
 </project>
