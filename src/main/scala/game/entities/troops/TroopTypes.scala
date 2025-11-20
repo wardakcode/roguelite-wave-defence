@@ -8,7 +8,11 @@ import game.core.{GameEngine, GameState}
 
 class EnemyTroop(startPos: Vector2) extends Troop {
   var position: Vector2 = startPos
-  var stats: Stats = Stats.forMelee
+  var stats: Stats = Stats.forMelee.copy(
+    damage = 4f,
+    attackSpeed = 0.6f,
+    hp = 50f
+  )
   var radius: Float = 15f
   var color: Color = Color.BLACK
   var weapon: Weapon = new MeleeWeapon(this)

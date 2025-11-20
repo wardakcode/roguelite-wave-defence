@@ -34,6 +34,8 @@ trait Troop {
     }
   }
 
+  def resetHp(): Unit = stats = stats.copy(hp = stats.maxHp)
+
   protected def updateMovement(delta: Float): Unit = {
     target match {
       case Some(enemy) =>
