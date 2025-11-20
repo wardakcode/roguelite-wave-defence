@@ -14,6 +14,8 @@ trait Troop {
   var color: Color
   var target: Option[Troop] = None
   var weapon: Weapon
+  var lastMoveDirection: Vector2 = new Vector2(0, 0)
+  var lastAvoidance: Vector2 = new Vector2(0, 0)
 
   def isEnemy: Boolean
 
@@ -48,10 +50,18 @@ trait Troop {
           val avoidance = obstacleAvoidance()
           val moveDirection = desiredDirection.add(avoidance)
 
+          lastAvoidance.set(avoidance)
+          lastMoveDirection.set(moveDirection)
+
           if (!moveDirection.isZero) {
             moveDirection.nor().scl(stats.movementSpeed * delta)
-            position.x += moveDirection.x
-            position.y += moveDirection.y
+
+            val desiredPosition = new Vector2(position).add(moveDirection)
+            val correctedPosition = GameState.buildings.foldLeft(desiredPosition) { (pos, building) =>
+              building.resolveCollision(pos, radius, GameState.buildingBuffer)
+            }
+
+            position.set(correctedPosition)
           }
         }
       case None => // No target behavior
@@ -74,7 +84,7 @@ trait Troop {
       val closestPoint = building.closestPoint(position)
       val away = new Vector2(position).sub(closestPoint)
       val distance = away.len()
-      val desiredSeparation = radius + 6f
+      val desiredSeparation = radius + GameState.buildingBuffer
 
       if (distance > 0 && distance < desiredSeparation) {
         val strength = (desiredSeparation - distance) / desiredSeparation
@@ -122,5 +132,13 @@ trait Troop {
       healthBarWidth * healthPercentage,
       healthBarHeight
     )
+  }
+
+  def renderDebugVectors(shapeRenderer: ShapeRenderer): Unit = {
+    shapeRenderer.setColor(Color.CYAN)
+    shapeRenderer.line(position.x, position.y, position.x + lastMoveDirection.x * 20f, position.y + lastMoveDirection.y * 20f)
+
+    shapeRenderer.setColor(Color.YELLOW)
+    shapeRenderer.line(position.x, position.y, position.x + lastAvoidance.x * 30f, position.y + lastAvoidance.y * 30f)
   }
 }

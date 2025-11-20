@@ -17,6 +17,9 @@ object GameState {
   var enemies: List[EnemyTroop] = List()
   var hq: Option[HQTroop] = None
   private var projectiles: List[Projectile] = List()
+  val buildingBuffer: Float = 12f
+  var debugCollisionBounds: Boolean = false
+  var debugTroopVectors: Boolean = false
 
   sealed trait Phase
   case object StartMenu extends Phase
@@ -95,6 +98,19 @@ object GameState {
     playerTroops.foreach(_.render(shapeRenderer))
     enemies.foreach(_.render(shapeRenderer))
     projectiles.foreach(_.render(shapeRenderer))
+  }
+
+  def renderDebug(shapeRenderer: ShapeRenderer): Unit = {
+    if (debugCollisionBounds) {
+      shapeRenderer.setColor(0f, 1f, 1f, 0.6f)
+      buildings.foreach(_.renderCollisionBounds(shapeRenderer, buildingBuffer))
+    }
+
+    if (debugTroopVectors) {
+      playerTroops.foreach(_.renderDebugVectors(shapeRenderer))
+      enemies.foreach(_.renderDebugVectors(shapeRenderer))
+      hq.foreach(_.renderDebugVectors(shapeRenderer))
+    }
   }
 
   def addProjectile(projectile: Projectile): Unit = {
@@ -215,6 +231,13 @@ class GameEngine extends Game {
     GameState.render(shapeRenderer)
     shapeRenderer.end()
 
+    if (GameState.debugCollisionBounds || GameState.debugTroopVectors) {
+      shapeRenderer.begin(ShapeType.Line)
+      shapeRenderer.setProjectionMatrix(camera.combined)
+      GameState.renderDebug(shapeRenderer)
+      shapeRenderer.end()
+    }
+
     drawUI()
   }
 
@@ -225,6 +248,14 @@ class GameEngine extends Game {
   }
 
   private def handleInput(): Unit = {
+    if (Gdx.input.isKeyJustPressed(Keys.F1)) {
+      GameState.debugCollisionBounds = !GameState.debugCollisionBounds
+    }
+
+    if (Gdx.input.isKeyJustPressed(Keys.F2)) {
+      GameState.debugTroopVectors = !GameState.debugTroopVectors
+    }
+
     GameState.phase match {
       case GameState.StartMenu =>
         if (Gdx.input.isKeyJustPressed(Keys.ENTER)) {
