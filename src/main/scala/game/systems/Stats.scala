@@ -27,7 +27,7 @@ object Stats {
     attackSpeed = 1.0f,
     hp = 100f,
     maxHp = 100f,
-    movementSpeed = 25f,
+    movementSpeed = 75f,
     armor = 20f,
     attackRange = 20f
   )
