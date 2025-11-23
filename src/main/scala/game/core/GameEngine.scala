@@ -1,343 +1,67 @@
 package game.core
 
-import com.badlogic.gdx.{Game, Gdx, Graphics}
-import com.badlogic.gdx.graphics.{GL20, OrthographicCamera}
-import com.badlogic.gdx.graphics.g2d.{BitmapFont, SpriteBatch}
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType
-import com.badlogic.gdx.math.Vector2
-import com.badlogic.gdx.Input.Keys
-import game.entities.buildings._
-import game.entities.troops._
-import game.systems.Projectile
+import com.badlogic.gdx.{ApplicationAdapter, Gdx}
+import game.model._
 
-object GameState {
-  var buildings: List[Building] = List()
-  var playerTroops: List[Troop] = List()
-  var enemies: List[EnemyTroop] = List()
-  var hq: Option[HQTroop] = None
-  private var projectiles: List[Projectile] = List()
-  val worldMinX: Float = -960f
-  val worldMinY: Float = -960f
-  val worldMaxX: Float = 2240f
-  val worldMaxY: Float = 2240f
+/**
+ * Basic game engine scaffold that manages a 10x10 grid world and resolves navigation
+ * for troops and enemies using A* pathfinding.
+ */
+class GameEngine extends ApplicationAdapter {
+  private val worldSize = 10
+  private val grid: Grid = Grid(width = worldSize, height = worldSize)
+  private val pathfinder = new AStarPathfinder(grid)
 
-  sealed trait Phase
-  case object StartMenu extends Phase
-  case object Playing extends Phase
-  case object Shop extends Phase
-  case object GameOver extends Phase
-
-  val maxRounds = 5
-  val goldPerKill = 2
-  private val meleeCost = 10
-
-  var phase: Phase = StartMenu
-  var gold: Int = 0
-  var round: Int = 0
-  private var roundActive: Boolean = false
-  var resultMessage: Option[String] = None
-
-  def resetGame(): Unit = {
-    buildings = List(
-      new HQ(),
-      new Barracks(),
-      new Tavern(),
-      new Wall()
-    )
-
-    val newHq = new HQTroop()
-    hq = Some(newHq)
-
-    playerTroops = spawnInitialTroops(newHq)
-    enemies = List()
-    projectiles = List()
-    gold = 0
-    round = 0
-    roundActive = false
-    resultMessage = None
-    phase = StartMenu
-  }
-
-  def worldToGrid(shapeRenderer: ShapeRenderer) = {
-
-
-    // Vertical lines (constant X)
-    var x = Math.floor(worldMinX / 10f).toFloat * 10f
-    while (x <= worldMaxX) {
-      shapeRenderer.line(x, worldMinY, x, worldMaxY)
-      x += 10f
-    }
-
-    // Horizontal lines (constant Y)
-    var y = Math.floor(worldMinY / 10f).toFloat * 10f
-    while (y <= worldMaxY) {
-      shapeRenderer.line(worldMinX, y, worldMaxX, y)
-      y += 10f
-    }
-
-    // Highlight world axes
-    shapeRenderer.setColor(1, 0, 0, 1) // X-axis
-    shapeRenderer.line(worldMinX, 0, worldMaxX, 0)
-
-    shapeRenderer.setColor(0, 1, 0, 1) // Y-axis
-    shapeRenderer.line(0, worldMinY, 0, worldMaxY)
-  }
-
-  def update(delta: Float): Unit = {
-    if (phase != Playing) return
-
-    // Update all entities
-    playerTroops.foreach(_.update(delta))
-    enemies.foreach(_.update(delta))
-
-    // Update and filter active projectiles
-    projectiles = projectiles.filter(_.isActive)
-    projectiles.foreach(_.update(delta))
-
-    // Check projectile collisions
-    checkProjectileCollisions()
-
-    // Remove dead enemies and award gold
-    val (aliveEnemies, defeatedEnemies) = enemies.partition(!_.stats.isDead)
-    enemies = aliveEnemies
-    if (defeatedEnemies.nonEmpty) {
-      gold += defeatedEnemies.size * goldPerKill
-    }
-
-    if (hq.exists(_.stats.isDead)) {
-      phase = GameOver
-      resultMessage = Some("The HQ was destroyed.")
-    } else if (roundActive && enemies.isEmpty) {
-      roundActive = false
-      if (round >= maxRounds) {
-        phase = GameOver
-        resultMessage = Some("All waves cleared!")
-      } else {
-        phase = Shop
-      }
-    }
-  }
-
-  def render(shapeRenderer: ShapeRenderer): Unit = {
-    buildings.foreach(_.render(shapeRenderer))
-    playerTroops.foreach(_.render(shapeRenderer))
-    enemies.foreach(_.render(shapeRenderer))
-    projectiles.foreach(_.render(shapeRenderer))
-  }
-
-  def addProjectile(projectile: Projectile): Unit = {
-    projectiles = projectile :: projectiles
-  }
-
-  def startRound(): Unit = {
-    if (phase == GameOver) return
-    round += 1
-    spawnCurrentTroops()
-    spawnEnemiesForRound()
-    roundActive = true
-    phase = Playing
-  }
-
-  def buyMeleeTroop(): Unit = {
-    if (gold >= meleeCost) {
-      val troops = (1 to 5).map(_ => new MeleeTroop(new Vector2(140 + scala.util.Random.nextInt(40), 330 + scala.util.Random.nextInt(60)))).toList
-      playerTroops = troops ++ playerTroops
-      gold -= meleeCost
-    }
-  }
-
-  private def spawnInitialTroops(newHq: HQTroop): List[Troop] = {
-    val basePositions = List(
-      new Vector2(170, 330),
-      new Vector2(170, 360),
-      new Vector2(170, 390),
-      new Vector2(200, 345),
-      new Vector2(200, 375)
-    )
-    val guards = basePositions.map(pos => new MeleeTroop(pos))
-    newHq :: guards
-  }
-
-  private def spawnCurrentTroops(): Unit = {
-    val baseX = 170
-    val baseY = 330
-    val colSpacing = 30
-    val rowSpacing = 30
-    val maxPerCol = 10
-
-    playerTroops.zipWithIndex.foreach { case (troop, i) =>
-      // Column and row index
-      val col = i / maxPerCol
-      val row = i % maxPerCol
-
-      // New position
-      val newPos = new Vector2(
-        baseX + col * colSpacing,
-        baseY + row * rowSpacing
-      )
-
-      troop.position = newPos
-      troop.resetHp()        // assuming you have this method
-    }
-  }
-
-  private def spawnEnemiesForRound(): Unit = {
-    val count = 12 + (round - 1) * 2
-    val toughnessMultiplier = 1f + (round - 1) * 0.2f
-    val spawnDistance = 800f + round * 30f
-    val hqPosition = hq.map(_.position).getOrElse(new Vector2(0, 0))
-
-    enemies = (0 until count).toList.map { i =>
-      val side = i % 4
-      val offset = scala.util.Random.nextFloat() * 300f - 150f
-      val position = side match {
-        case _ => new Vector2(hqPosition.x + spawnDistance, hqPosition.y - offset)
-      }
-      val enemy = new EnemyTroop(position)
-      val boostedHp = enemy.stats.maxHp * toughnessMultiplier
-      enemy.stats = enemy.stats.copy(
-        damage = enemy.stats.damage * toughnessMultiplier,
-        hp = boostedHp,
-        maxHp = boostedHp
-      )
-      enemy
-    }
-  }
-
-  private def checkProjectileCollisions(): Unit = {
-    projectiles.foreach { projectile =>
-      val targets = if (projectile.isFromEnemy) playerTroops else enemies
-
-      targets.find { target =>
-        !target.stats.isDead &&
-          target.position.dst(projectile.position) < target.radius + projectile.size
-      }.foreach { target =>
-        target.stats = target.stats.takeDamage(projectile.damage)
-        projectile.isActive = false
-      }
-    }
-  }
-}
-
-class GameEngine extends Game {
-  var batch: SpriteBatch = _
-  var camera: GameCamera = _
-  var shapeRenderer: ShapeRenderer = _
-  var uiCamera: OrthographicCamera = _
-  var font: BitmapFont = _
+  private var hq: HeadQuarters = _
+  private var buildings: List[Building] = Nil
+  private var troops: List[Troop] = Nil
+  private var enemies: List[Enemy] = Nil
 
   override def create(): Unit = {
-    batch = new SpriteBatch
-    camera = new GameCamera
-    camera.setToOrtho(false, 1280, 720)
-    camera.zoom = 2f  // Start more zoomed out
+    // Initialize HQ at the center of the grid.
+    hq = HeadQuarters(Position(worldSize / 2, worldSize / 2), size = 20)
 
-    shapeRenderer = new ShapeRenderer()
-    uiCamera = new OrthographicCamera()
-    uiCamera.setToOrtho(false, Gdx.graphics.getWidth, Gdx.graphics.getHeight)
+    // Example world layout. Building sizes must be multiples of 10.
+    buildings = List(
+      Building(Position(1, 1), size = 10, buildingType = Barracks),
+      Building(Position(7, 1), size = 20, buildingType = Factory)
+    )
 
-    font = new BitmapFont()
-    font.setUseIntegerPositions(false)
+    // Apply no-go zones for all buildings except the HQ so that pathfinding
+    // respects restricted construction areas.
+    buildings.foreach(b => grid.addNoGoZone(b))
 
-    GameState.resetGame()
+    troops = List(Troop(Position(0, 0)), Troop(Position(0, 9)))
+    enemies = List(Enemy(Position(9, 0)), Enemy(Position(9, 9)))
+
+    resolvePaths()
   }
 
-  override def render(): Unit = {
-    // Clear screen
-    Gdx.gl.glClearColor(0, 0, 0.08f, 1)
-    Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
-
-    val delta = Gdx.graphics.getDeltaTime
-
-    handleInput()
-
-    // Update camera
-    camera.update(delta)
-    uiCamera.update()
-
-    // Update game state
-    GameState.update(delta)
-
-    // --- 1. Draw grid (lines only)
-    shapeRenderer.setProjectionMatrix(camera.combined)
-    shapeRenderer.begin(ShapeType.Line)
-    GameState.worldToGrid(shapeRenderer)
-    shapeRenderer.end()
-
-    // --- 2. Draw game objects (filled)
-    shapeRenderer.begin(ShapeType.Filled)
-    GameState.render(shapeRenderer)   // just troops, buildings, etc.
-    shapeRenderer.end()
-
-    // ---- 3. Draw UI
-    drawUI()
-  }
-
-  override def dispose(): Unit = {
-    batch.dispose()
-    shapeRenderer.dispose()
-    font.dispose()
-  }
-
-  private def handleInput(): Unit = {
-    GameState.phase match {
-      case GameState.StartMenu =>
-        if (Gdx.input.isKeyJustPressed(Keys.ENTER)) {
-          GameState.startRound()
+  /**
+   * Computes navigation paths for troops (toward the nearest enemy) and enemies
+   * (toward the HQ). Paths are recalculated whenever create() is called, but could be
+   * reused in an update loop in a more complete implementation.
+   */
+  private def resolvePaths(): Unit = {
+    troops.foreach { troop =>
+      nearestEnemy(troop.position).foreach { target =>
+        pathfinder.findPath(troop.position, target.position).foreach { path =>
+          Gdx.app.log("PATH", s"Troop at ${troop.position} -> enemy at ${target.position}: ${path.mkString(" -> ")}")
         }
-      case GameState.Playing =>
-        // No menu interactions while actively defending
-      case GameState.Shop =>
-        if (Gdx.input.isKeyJustPressed(Keys.NUM_1) || Gdx.input.isKeyJustPressed(Keys.NUM_5)) {
-          GameState.buyMeleeTroop()
-        }
-        if (Gdx.input.isKeyJustPressed(Keys.ENTER) || Gdx.input.isKeyJustPressed(Keys.SPACE)) {
-          GameState.startRound()
-        }
-      case GameState.GameOver =>
-        if (Gdx.input.isKeyJustPressed(Keys.R)) {
-          GameState.resetGame()
-        }
+      }
+    }
+
+    enemies.foreach { enemy =>
+      pathfinder.findPath(enemy.position, hq.position, allowHq = true).foreach { path =>
+        Gdx.app.log("PATH", s"Enemy at ${enemy.position} -> HQ at ${hq.position}: ${path.mkString(" -> ")}")
+      }
     }
   }
 
-  private def drawUI(): Unit = {
-    // UI background panels
-    shapeRenderer.setProjectionMatrix(uiCamera.combined)
-    shapeRenderer.begin(ShapeType.Filled)
-    shapeRenderer.setColor(0f, 0f, 0f, 0.5f)
-    shapeRenderer.rect(10, Gdx.graphics.getHeight - 60, 340, 50)
-
-    if (GameState.phase == GameState.StartMenu || GameState.phase == GameState.GameOver) {
-      shapeRenderer.rect(Gdx.graphics.getWidth / 2f - 120, Gdx.graphics.getHeight / 2f - 40, 240, 80)
-    }
-
-    if (GameState.phase == GameState.Shop) {
-      shapeRenderer.rect(Gdx.graphics.getWidth / 2f - 200, Gdx.graphics.getHeight / 2f - 70, 400, 140)
-    }
-
-    shapeRenderer.end()
-
-    // UI text
-    batch.setProjectionMatrix(uiCamera.combined)
-    batch.begin()
-    val baseText = s"Round ${GameState.round}/${GameState.maxRounds} | Gold: ${GameState.gold} | Enemies: ${GameState.enemies.size}"
-    font.draw(batch, baseText, 20, Gdx.graphics.getHeight - 25)
-
-    GameState.phase match {
-      case GameState.StartMenu =>
-        font.draw(batch, "Defend the HQ! Press ENTER to start.", Gdx.graphics.getWidth / 2f - 110, Gdx.graphics.getHeight / 2f + 10)
-        font.draw(batch, "You begin with 5 melee guards.", Gdx.graphics.getWidth / 2f - 100, Gdx.graphics.getHeight / 2f - 15)
-      case GameState.Shop =>
-        font.draw(batch, "Shop: Press 1 to recruit a melee troop (10 gold).", Gdx.graphics.getWidth / 2f - 180, Gdx.graphics.getHeight / 2f + 20)
-        font.draw(batch, "Press ENTER to begin the next wave.", Gdx.graphics.getWidth / 2f - 130, Gdx.graphics.getHeight / 2f - 5)
-      case GameState.GameOver =>
-        val result = GameState.resultMessage.getOrElse("Battle over.")
-        font.draw(batch, s"$result Press R to restart.", Gdx.graphics.getWidth / 2f - 140, Gdx.graphics.getHeight / 2f + 5)
-      case GameState.Playing =>
-        font.draw(batch, "Enemies aim for the HQ – hold the line!", 20, Gdx.graphics.getHeight - 45)
-    }
-    batch.end()
+  private def nearestEnemy(from: Position): Option[Enemy] = {
+    enemies.sortBy(e => manhattanDistance(from, e.position)).headOption
   }
+
+  private def manhattanDistance(a: Position, b: Position): Int =
+    math.abs(a.x - b.x) + math.abs(a.y - b.y)
 }
