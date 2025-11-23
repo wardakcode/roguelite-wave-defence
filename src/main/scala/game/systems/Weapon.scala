@@ -3,7 +3,7 @@ package game.systems
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
-import game.core.GameState
+
 import game.entities.troops.Troop
 
 trait Weapon {
@@ -59,7 +59,7 @@ class RangedWeapon(var owner: Troop) extends Weapon {
         owner.stats.damage,
         isFromEnemy = owner.isEnemy
       )
-      GameState.addProjectile(newProjectile)
+
       attackTimer = 1.0f / owner.stats.attackSpeed
     }
   }

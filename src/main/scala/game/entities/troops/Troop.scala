@@ -4,8 +4,7 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Vector2
 import game.systems.{Stats, Weapon}
 import com.badlogic.gdx.graphics.Color
-import game.core.GameState  // Added this import
-
+import game.core.GameState
 
 trait Troop {
   var position: Vector2
@@ -15,48 +14,71 @@ trait Troop {
   var target: Option[Troop] = None
   var weapon: Weapon
 
+  // Pathfinding variables
+  protected var currentPath: List[Vector2] = List()
+  protected var pathfindingTimer: Float = 0f
+  protected val pathfindingInterval: Float = 1.5f // Recalculate path every 0.5 seconds
+
   def isEnemy: Boolean
 
   def update(delta: Float): Unit = {
     if (!stats.isDead) {
-      updateTarget()
       updateMovement(delta)
       updateCombat(delta)
       weapon.update(delta)
     }
   }
 
-  protected def updateTarget(): Unit = {
-    if (target.isEmpty || target.exists(_.stats.isDead)) {
-      target = findTargets
-        .filter(!_.stats.isDead)
-        .minByOption(enemy => position.dst(enemy.position))
-    }
-  }
-
   def resetHp(): Unit = stats = stats.copy(hp = stats.maxHp)
 
   protected def updateMovement(delta: Float): Unit = {
+    // Safety check
+    if (GameState.pathfindingGrid == null) return
+
+    pathfindingTimer -= delta
+
     target match {
-      case Some(enemy) =>
+      case Some(enemy) if !enemy.stats.isDead =>
         val distance = position.dst(enemy.position)
+
+        // If out of attack range, move towards enemy
         if (distance > stats.attackRange) {
-          val toTarget = new Vector2(
-            enemy.position.x - position.x,
-            enemy.position.y - position.y
-          )
-
-          val desiredDirection = if (toTarget.isZero) new Vector2(0, 0) else new Vector2(toTarget).nor()
-          val avoidance = obstacleAvoidance()
-          val moveDirection = desiredDirection.add(avoidance)
-
-          if (!moveDirection.isZero) {
-            moveDirection.nor().scl(stats.movementSpeed * delta)
-            position.x += moveDirection.x
-            position.y += moveDirection.y
+          // Recalculate path periodically or if we have no path
+          if (pathfindingTimer <= 0 || currentPath.isEmpty) {
+            GameState.pathfindingGrid.findPath(position, enemy.position) match {
+              case Some(path) =>
+                currentPath = path
+                pathfindingTimer = pathfindingInterval
+              case None =>
+                // If no path found, try direct movement
+                currentPath = List(enemy.position)
+                pathfindingTimer = pathfindingInterval
+            }
           }
+
+          // Follow the path
+          if (currentPath.nonEmpty) {
+            val nextWaypoint = currentPath.head
+            val directionToWaypoint = new Vector2(nextWaypoint).sub(position)
+            val distanceToWaypoint = directionToWaypoint.len()
+
+            if (distanceToWaypoint < 5f) {
+              // Reached waypoint, move to next one
+              currentPath = currentPath.tail
+            } else {
+              // Move towards waypoint
+              directionToWaypoint.nor()
+              position.x += directionToWaypoint.x * stats.movementSpeed * delta
+              position.y += directionToWaypoint.y * stats.movementSpeed * delta
+            }
+          }
+        } else {
+          // Within attack range, clear path
+          currentPath = List()
         }
-      case None => // No target behavior
+      case _ =>
+        // No valid target, clear path
+        currentPath = List()
     }
   }
 
@@ -69,26 +91,11 @@ trait Troop {
     }
   }
 
-  protected def findTargets: List[Troop]
-
-  private def obstacleAvoidance(): Vector2 = {
-    GameState.buildings.foldLeft(new Vector2(0, 0)) { (acc, building) =>
-      val closestPoint = building.closestPoint(position)
-      val away = new Vector2(position).sub(closestPoint)
-      val distance = away.len()
-      val desiredSeparation = radius + 6f
-
-      if (distance > 0 && distance < desiredSeparation) {
-        val strength = (desiredSeparation - distance) / desiredSeparation
-        acc.add(away.nor().scl(strength))
-      } else {
-        acc
-      }
-    }
-  }
-
   def render(shapeRenderer: ShapeRenderer): Unit = {
     if (!stats.isDead) {
+      // Render path (for debugging)
+      renderPath(shapeRenderer)
+
       // Render troop
       shapeRenderer.setColor(color)
       shapeRenderer.circle(position.x, position.y, radius)
@@ -98,6 +105,17 @@ trait Troop {
 
       // Render weapon
       weapon.render(shapeRenderer)
+    }
+  }
+
+  private def renderPath(shapeRenderer: ShapeRenderer): Unit = {
+    if (currentPath.nonEmpty) {
+      shapeRenderer.setColor(0.5f, 0.5f, 1f, 0.3f)
+      var prev = position
+      currentPath.foreach { waypoint =>
+        shapeRenderer.rectLine(prev.x, prev.y, waypoint.x, waypoint.y, 2f)
+        prev = waypoint
+      }
     }
   }
 

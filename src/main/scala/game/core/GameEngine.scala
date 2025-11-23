@@ -9,7 +9,7 @@ import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.Input.Keys
 import game.entities.buildings._
 import game.entities.troops._
-import game.systems.Projectile
+import game.systems.{Projectile, PathfindingGrid}
 
 object GameState {
   var buildings: List[Building] = List()
@@ -17,6 +17,8 @@ object GameState {
   var enemies: List[EnemyTroop] = List()
   var hq: Option[HQTroop] = None
   private var projectiles: List[Projectile] = List()
+  var pathfindingGrid: PathfindingGrid = _
+
   val worldMinX: Float = -960f
   val worldMinY: Float = -960f
   val worldMaxX: Float = 2240f
@@ -46,6 +48,9 @@ object GameState {
       new Wall()
     )
 
+    // Initialize pathfinding grid with buildings
+    pathfindingGrid = new PathfindingGrid(buildings, gridSize = 10f)
+
     val newHq = new HQTroop()
     hq = Some(newHq)
 
@@ -60,8 +65,6 @@ object GameState {
   }
 
   def worldToGrid(shapeRenderer: ShapeRenderer) = {
-
-
     // Vertical lines (constant X)
     var x = Math.floor(worldMinX / 10f).toFloat * 10f
     while (x <= worldMaxX) {
@@ -86,6 +89,9 @@ object GameState {
 
   def update(delta: Float): Unit = {
     if (phase != Playing) return
+
+    // Assign targets for troops BEFORE updating
+    assignTargets()
 
     // Update all entities
     playerTroops.foreach(_.update(delta))
@@ -119,6 +125,27 @@ object GameState {
     }
   }
 
+  private def assignTargets(): Unit = {
+    // Assign nearest enemy to each player troop
+    playerTroops.foreach { troop =>
+      if (!troop.stats.isDead) {
+        troop.target = enemies
+          .filter(!_.stats.isDead)
+          .sortBy(_.position.dst(troop.position))
+          .headOption
+      }
+    }
+
+    // Enemies target HQ
+    hq.foreach { hqTroop =>
+      enemies.foreach { enemy =>
+        if (!enemy.stats.isDead) {
+          enemy.target = Some(hqTroop)
+        }
+      }
+    }
+  }
+
   def render(shapeRenderer: ShapeRenderer): Unit = {
     buildings.foreach(_.render(shapeRenderer))
     playerTroops.foreach(_.render(shapeRenderer))
@@ -141,7 +168,9 @@ object GameState {
 
   def buyMeleeTroop(): Unit = {
     if (gold >= meleeCost) {
-      val troops = (1 to 5).map(_ => new MeleeTroop(new Vector2(140 + scala.util.Random.nextInt(40), 330 + scala.util.Random.nextInt(60)))).toList
+      val troops = (1 to 5).map(_ => new MeleeTroop(
+        new Vector2(140 + scala.util.Random.nextInt(40), 330 + scala.util.Random.nextInt(60))
+      )).toList
       playerTroops = troops ++ playerTroops
       gold -= meleeCost
     }
@@ -167,18 +196,16 @@ object GameState {
     val maxPerCol = 10
 
     playerTroops.zipWithIndex.foreach { case (troop, i) =>
-      // Column and row index
       val col = i / maxPerCol
       val row = i % maxPerCol
 
-      // New position
       val newPos = new Vector2(
         baseX + col * colSpacing,
         baseY + row * rowSpacing
       )
 
       troop.position = newPos
-      troop.resetHp()        // assuming you have this method
+      troop.resetHp()
     }
   }
 
@@ -192,7 +219,7 @@ object GameState {
       val side = i % 4
       val offset = scala.util.Random.nextFloat() * 300f - 150f
       val position = side match {
-        case _ => new Vector2(hqPosition.x + spawnDistance, hqPosition.y - offset)
+        case _ => new Vector2(hqPosition.x + spawnDistance, hqPosition.y + offset)
       }
       val enemy = new EnemyTroop(position)
       val boostedHp = enemy.stats.maxHp * toughnessMultiplier
@@ -231,7 +258,7 @@ class GameEngine extends Game {
     batch = new SpriteBatch
     camera = new GameCamera
     camera.setToOrtho(false, 1280, 720)
-    camera.zoom = 2f  // Start more zoomed out
+    camera.zoom = 2f
 
     shapeRenderer = new ShapeRenderer()
     uiCamera = new OrthographicCamera()
@@ -244,7 +271,6 @@ class GameEngine extends Game {
   }
 
   override def render(): Unit = {
-    // Clear screen
     Gdx.gl.glClearColor(0, 0, 0.08f, 1)
     Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
@@ -252,25 +278,20 @@ class GameEngine extends Game {
 
     handleInput()
 
-    // Update camera
     camera.update(delta)
     uiCamera.update()
 
-    // Update game state
     GameState.update(delta)
 
-    // --- 1. Draw grid (lines only)
     shapeRenderer.setProjectionMatrix(camera.combined)
     shapeRenderer.begin(ShapeType.Line)
     GameState.worldToGrid(shapeRenderer)
     shapeRenderer.end()
 
-    // --- 2. Draw game objects (filled)
     shapeRenderer.begin(ShapeType.Filled)
-    GameState.render(shapeRenderer)   // just troops, buildings, etc.
+    GameState.render(shapeRenderer)
     shapeRenderer.end()
 
-    // ---- 3. Draw UI
     drawUI()
   }
 
@@ -287,7 +308,7 @@ class GameEngine extends Game {
           GameState.startRound()
         }
       case GameState.Playing =>
-        // No menu interactions while actively defending
+      // No menu interactions while actively defending
       case GameState.Shop =>
         if (Gdx.input.isKeyJustPressed(Keys.NUM_1) || Gdx.input.isKeyJustPressed(Keys.NUM_5)) {
           GameState.buyMeleeTroop()
@@ -303,7 +324,6 @@ class GameEngine extends Game {
   }
 
   private def drawUI(): Unit = {
-    // UI background panels
     shapeRenderer.setProjectionMatrix(uiCamera.combined)
     shapeRenderer.begin(ShapeType.Filled)
     shapeRenderer.setColor(0f, 0f, 0f, 0.5f)
@@ -319,10 +339,11 @@ class GameEngine extends Game {
 
     shapeRenderer.end()
 
-    // UI text
     batch.setProjectionMatrix(uiCamera.combined)
     batch.begin()
-    val baseText = s"Round ${GameState.round}/${GameState.maxRounds} | Gold: ${GameState.gold} | Enemies: ${GameState.enemies.size}"
+    val troopsWithTargets = GameState.playerTroops.count(_.target.isDefined)
+    val enemiesWithTargets = GameState.enemies.count(_.target.isDefined)
+    val baseText = s"Round ${GameState.round}/${GameState.maxRounds} | Gold: ${GameState.gold} | Enemies: ${GameState.enemies.size} | Targets: P:$troopsWithTargets E:$enemiesWithTargets"
     font.draw(batch, baseText, 20, Gdx.graphics.getHeight - 25)
 
     GameState.phase match {

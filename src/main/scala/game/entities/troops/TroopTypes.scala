@@ -4,7 +4,7 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import game.systems.{MeleeWeapon, PassiveWeapon, RangedWeapon, Stats, Weapon}
-import game.core.{GameEngine, GameState}
+
 
 class EnemyTroop(startPos: Vector2) extends Troop {
   var position: Vector2 = startPos
@@ -14,11 +14,11 @@ class EnemyTroop(startPos: Vector2) extends Troop {
     hp = 50f
   )
   var radius: Float = 15f
-  var color: Color = Color.BLACK
+  var color: Color = Color.PINK
   var weapon: Weapon = new MeleeWeapon(this)
   val isEnemy: Boolean = true
 
-  protected def findTargets: List[Troop] = GameState.playerTroops
+
 }
 
 class MeleeTroop(startPos: Vector2) extends Troop {
@@ -29,7 +29,7 @@ class MeleeTroop(startPos: Vector2) extends Troop {
   var weapon: Weapon = new MeleeWeapon(this)
   val isEnemy: Boolean = false
 
-  protected def findTargets: List[Troop] = GameState.enemies
+
 }
 
 class ArcherTroop(startPos: Vector2) extends Troop {
@@ -40,7 +40,7 @@ class ArcherTroop(startPos: Vector2) extends Troop {
   var weapon: Weapon = new RangedWeapon(this)
   val isEnemy: Boolean = false
 
-  protected def findTargets: List[Troop] = GameState.enemies
+
 
 }
 
@@ -52,7 +52,7 @@ class SpearTroop(startPos: Vector2) extends Troop {
   var weapon: Weapon = new MeleeWeapon(this)
   val isEnemy: Boolean = false
 
-  protected def findTargets: List[Troop] = GameState.enemies
+
 
 }
 
@@ -64,7 +64,7 @@ class NinjaTroop(startPos: Vector2) extends Troop {
   var weapon: Weapon = new MeleeWeapon(this)
   val isEnemy: Boolean = false
 
-  protected def findTargets: List[Troop] = GameState.enemies
+
 
 }
 
@@ -76,9 +76,8 @@ class HQTroop extends Troop {
   var weapon: Weapon = new PassiveWeapon(this)
   val isEnemy: Boolean = false
 
-  override protected def updateMovement(delta: Float): Unit = ()
-  override protected def updateTarget(): Unit = ()
+
   override protected def updateCombat(delta: Float): Unit = ()
 
-  protected def findTargets: List[Troop] = GameState.enemies
+
 }
